@@ -239,6 +239,7 @@ onMounted(() => {
     data.value = JSON.parse(cache)
   }
 
+  // 把监听到的视频数据，存储并发送到前端展示。
   eventStore.addHandle({
     type: "newResources",
     event: (res: appType.MediaInfo) => {
@@ -390,6 +391,9 @@ const download = (row: appType.MediaInfo, index: number) => {
   loading.value = true
   downIndex.value = index
   if (row.DecodeKey) {
+    // 这里很关键，http中获取的DecodeKey示例“1679347023",  decodeStr示例：“MhlT2HUnVsLJJsjQfvQy9nBHMmeD1embKavCaw+DxKG...”
+    // getDecryptionArray(row.DecodeKey)：这个函数会把字符串密钥转换成一个 Uint8Array（字节数组），通常是做某种加密/解密算法的准备。 具体见：'@/assets/js/decrypt.js'
+    // uint8ArrayToBase64(...)：再把字节数组编码成 Base64 字符串，便于通过 HTTP 传递给后端。
     appApi.download({...row, decodeStr: uint8ArrayToBase64(getDecryptionArray(row.DecodeKey))}).then((res: any) => {
       if (res.code === 0) {
         loading.value = false

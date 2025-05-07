@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"io"
 	"log"
 	"net"
@@ -13,6 +12,8 @@ import (
 	"os/exec"
 	sysRuntime "runtime"
 	"strings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type ResponseData struct {
@@ -302,6 +303,8 @@ func (h *HttpServer) download(w http.ResponseWriter, r *http.Request) {
 		h.writeJson(w, ResponseData{Code: 0, Message: err.Error()})
 		return
 	}
+	globalLogger.Info().Msgf("[index.vuew download] data.DecodeStr: %v", data.DecodeStr)
+	globalLogger.Info().Msgf("[index.vuew download] data.MediaInfo: %v", data.MediaInfo)
 	resourceOnce.download(data.MediaInfo, data.DecodeStr)
 	h.writeJson(w, ResponseData{Code: 1})
 }

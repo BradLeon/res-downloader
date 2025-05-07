@@ -100,6 +100,7 @@ func (r *Resource) download(mediaInfo MediaInfo, decodeStr string) {
 	if globalConfig.SaveDirectory == "" {
 		return
 	}
+
 	go func(mediaInfo MediaInfo) {
 		rawUrl := mediaInfo.Url
 		fileName := Md5(rawUrl)
@@ -121,6 +122,8 @@ func (r *Resource) download(mediaInfo MediaInfo, decodeStr string) {
 		} else {
 			mediaInfo.SavePath = filepath.Join(globalConfig.SaveDirectory, fileName+mediaInfo.Suffix)
 		}
+		globalLogger.Info().Msgf("[resource.go download] mediaInfo.SavePath: %v", mediaInfo.SavePath)
+		globalLogger.Info().Msgf("[resource.go download] rawUrl: %v", rawUrl)
 
 		if strings.Contains(rawUrl, "qq.com") {
 			if globalConfig.Quality == 1 &&
@@ -133,6 +136,10 @@ func (r *Resource) download(mediaInfo MediaInfo, decodeStr string) {
 						"?encfilekey=" + queryParams.Get("encfilekey") +
 						"&token=" + queryParams.Get("token")
 				}
+				globalLogger.Info().Msgf("[resource.go download] globalConfig.Quality == 1 parseUrl: %v", parseUrl)
+				globalLogger.Info().Msgf("[resource.go download] globalConfig.Quality == 1 queryParams: %v", queryParams)
+				globalLogger.Info().Msgf("[resource.go download] globalConfig.Quality == 1 rawUrl: %v", rawUrl)
+
 			} else if globalConfig.Quality > 1 && mediaInfo.OtherData["wx_file_formats"] != "" {
 				format := strings.Split(mediaInfo.OtherData["wx_file_formats"], "#")
 				qualityMap := []string{
@@ -141,10 +148,15 @@ func (r *Resource) download(mediaInfo MediaInfo, decodeStr string) {
 					format[len(format)-1],
 				}
 				rawUrl += "&X-snsvideoflag=" + qualityMap[globalConfig.Quality-2]
+
+				globalLogger.Info().Msgf("[resource.go download] globalConfig.Quality > 1 format: %v", mediaInfo.OtherData["wx_file_formats"])
+				globalLogger.Info().Msgf("[resource.go download] globalConfig.Quality > 1 rawUrl: %v", rawUrl)
 			}
 		}
 
 		headers, _ := r.parseHeaders(mediaInfo)
+
+		globalLogger.Info().Msgf("[resource.go download] after parseHeaders headers: %v", headers)
 
 		downloader := NewFileDownloader(rawUrl, mediaInfo.SavePath, globalConfig.TaskNumber, headers)
 		downloader.progressCallback = func(totalDownloaded float64) {
@@ -188,6 +200,7 @@ func (r *Resource) parseHeaders(mediaInfo MediaInfo) (map[string]string, error) 
 }
 
 func (r *Resource) wxFileDecode(mediaInfo MediaInfo, fileName, decodeStr string) (string, error) {
+	globalLogger.Info().Msgf("enter [resource.go wxFileDecode] 3 params, fileName: %v, decodeStr: %v", fileName, decodeStr)
 	sourceFile, err := os.Open(fileName)
 	if err != nil {
 		return "", err
@@ -209,6 +222,7 @@ func (r *Resource) wxFileDecode(mediaInfo MediaInfo, fileName, decodeStr string)
 	if err != nil {
 		return "", err
 	}
+	globalLogger.Info().Msgf("success exit [resource.go wxFileDecode] 3 params, fileName: %v, decodeStr: %v", mediaInfo.SavePath, decodeStr)
 	return mediaInfo.SavePath, nil
 }
 
@@ -233,34 +247,58 @@ func (r *Resource) progressEventsEmit(mediaInfo MediaInfo, args ...string) {
 }
 
 func (r *Resource) decodeWxFile(fileName, decodeStr string) error {
+	// 第1步：将base64编码的字符串解码为字节数组
+	// 这里decodeStr是一个base64编码的密钥，需要先解码才能使用
+	globalLogger.Info().Msgf("enter [resource.go decodeWxFile] fileName: %v, decodeStr: %v", fileName, decodeStr)
 	decodedBytes, err := base64.StdEncoding.DecodeString(decodeStr)
 	if err != nil {
 		return err
 	}
+
+	// 第2步：以读写模式打开要解密的文件
+	// O_RDWR表示以读写模式打开，0644是文件权限（所有者可读写，其他人只读）
 	file, err := os.OpenFile(fileName, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
+	// 确保函数结束时关闭文件，防止资源泄漏
 	defer file.Close()
 
+	// 第3步：获取解码后密钥的长度，并创建相同大小的缓冲区
 	byteCount := len(decodedBytes)
 	fileBytes := make([]byte, byteCount)
+
+	// 第4步：从文件开头读取与密钥长度相同的字节数
+	// 这里只读取文件的前byteCount个字节，因为微信文件加密通常只加密文件头部
 	_, err = file.Read(fileBytes)
 	if err != nil && err != io.EOF {
 		return err
 	}
+
+	// 第5步：执行XOR（异或）操作进行解密
+	// XOR是一种常见的加密/解密方法，对同一数据执行两次XOR操作会还原原始数据
+	// 这里对文件的前byteCount个字节与密钥进行异或操作
 	xorResult := make([]byte, byteCount)
 	for i := 0; i < byteCount; i++ {
 		xorResult[i] = decodedBytes[i] ^ fileBytes[i]
 	}
+
+	// 第6步：将文件指针重新定位到文件开头
+	// Seek(0, 0)表示从文件开头（第二个0）偏移0个字节（第一个0）
 	_, err = file.Seek(0, 0)
 	if err != nil {
 		return err
 	}
 
+	// 第7步：将解密后的数据写回文件
+	// 这会覆盖文件开头的加密数据，完成解密过程
 	_, err = file.Write(xorResult)
 	if err != nil {
 		return err
 	}
+
+	globalLogger.Info().Msgf("success exit [resource.go decodeWxFile] fileName: %v, decodeStr: %v", fileName, decodeStr)
+
+	// 解密成功，返回nil表示没有错误
 	return nil
 }
